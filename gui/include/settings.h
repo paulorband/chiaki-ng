@@ -96,7 +96,9 @@ enum class PlaceboUpscaler {
 	EwaLanczos4Sharpest,
 	FSR,
 	FSRCNNX8,
-	FSRCNNX16
+	FSRCNNX16,
+	ArtCNNC4F16,
+	ArtCNNC4F32
 };
 
 enum class PlaceboDownscaler {

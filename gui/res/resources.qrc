@@ -29,5 +29,7 @@
     <file alias="FSR.glsl">shaders/FSR.glsl</file>
     <file alias="FSRCNNX_x2_8-0-4-1.glsl">shaders/FSRCNNX_x2_8-0-4-1.glsl</file>
     <file alias="FSRCNNX_x2_16-0-4-1.glsl">shaders/FSRCNNX_x2_16-0-4-1.glsl</file>
+    <file alias="ArtCNN_C4F16.glsl">shaders/ArtCNN_C4F16.glsl</file>
+    <file alias="ArtCNN_C4F32.glsl">shaders/ArtCNN_C4F32.glsl</file>
   </qresource>
 </RCC>

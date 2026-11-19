@@ -2442,11 +2442,16 @@ static bool uses_fsrcnnx(PlaceboUpscaler upscaler)
     return upscaler == PlaceboUpscaler::FSRCNNX8 || upscaler == PlaceboUpscaler::FSRCNNX16;
 }
 
+static bool uses_artcnn(PlaceboUpscaler upscaler)
+{
+    return upscaler == PlaceboUpscaler::ArtCNNC4F16 || upscaler == PlaceboUpscaler::ArtCNNC4F32;
+}
+
 static constexpr float spatial_upscale_threshold = 1.2f;
 
 static bool uses_custom_upscale_hook(PlaceboUpscaler upscaler)
 {
-    return upscaler == PlaceboUpscaler::FSR || uses_fsrcnnx(upscaler);
+    return upscaler == PlaceboUpscaler::FSR || uses_fsrcnnx(upscaler) || uses_artcnn(upscaler);
 }
 
 static const struct pl_hook *select_spatial_hook(QmlMainWindow::VideoPreset preset,
@@ -2454,7 +2459,9 @@ static const struct pl_hook *select_spatial_hook(QmlMainWindow::VideoPreset pres
                                                  float upscale_factor,
                                                  const struct pl_hook *fsr_hook,
                                                  const struct pl_hook *hook8,
-                                                 const struct pl_hook *hook16)
+                                                 const struct pl_hook *hook16,
+                                                 const struct pl_hook *artcnn16,
+                                                 const struct pl_hook *artcnn32)
 {
     if (upscale_factor <= 1.0f)
         return nullptr;
@@ -2472,6 +2479,11 @@ static const struct pl_hook *select_spatial_hook(QmlMainWindow::VideoPreset pres
             return upscale_factor >= spatial_upscale_threshold ? hook8 : fsr_hook;
         case PlaceboUpscaler::FSRCNNX16:
             return upscale_factor >= spatial_upscale_threshold ? hook16 : fsr_hook;
+        case PlaceboUpscaler::ArtCNNC4F16:
+            // Fall back to FSR if the shader failed to parse or the upscale is too small for the CNN.
+            return (upscale_factor >= spatial_upscale_threshold && artcnn16) ? artcnn16 : fsr_hook;
+        case PlaceboUpscaler::ArtCNNC4F32:
+            return (upscale_factor >= spatial_upscale_threshold && artcnn32) ? artcnn32 : fsr_hook;
         default:
             return nullptr;
         }
@@ -2684,6 +2696,8 @@ QmlMainWindow::~QmlMainWindow()
     pl_mpv_user_shader_destroy(&fsr_hook);
     pl_mpv_user_shader_destroy(&fsrcnnx_hook_8);
     pl_mpv_user_shader_destroy(&fsrcnnx_hook_16);
+    pl_mpv_user_shader_destroy(&artcnn_hook_c4f16);
+    pl_mpv_user_shader_destroy(&artcnn_hook_c4f32);
     if (render_backend == RenderBackend::Vulkan) {
         pl_vulkan_destroy(&placebo_vulkan);
         pl_vk_inst_destroy(&placebo_vk_inst);
@@ -7535,8 +7549,18 @@ void QmlMainWindow::render()
         const float dst_height = fabsf(pl_rect_h(target_frame.crop));
         if (src_width > 0.0f && src_height > 0.0f) {
             const float upscale_factor = qMin(dst_width / src_width, dst_height / src_height);
+            if (video_preset == VideoPreset::Custom && upscale_factor >= spatial_upscale_threshold) {
+                if (configured_upscaler == PlaceboUpscaler::ArtCNNC4F16 && !artcnn_c4f16_load_attempted) {
+                    artcnn_c4f16_load_attempted = true;
+                    artcnn_hook_c4f16 = load_mpv_hook(placeboGpu(), QStringLiteral(":/shaders/ArtCNN_C4F16.glsl"));
+                } else if (configured_upscaler == PlaceboUpscaler::ArtCNNC4F32 && !artcnn_c4f32_load_attempted) {
+                    artcnn_c4f32_load_attempted = true;
+                    artcnn_hook_c4f32 = load_mpv_hook(placeboGpu(), QStringLiteral(":/shaders/ArtCNN_C4F32.glsl"));
+                }
+            }
             fsrcnnx_hook = select_spatial_hook(video_preset, configured_upscaler, upscale_factor,
-                                               fsr_hook, fsrcnnx_hook_8, fsrcnnx_hook_16);
+                                               fsr_hook, fsrcnnx_hook_8, fsrcnnx_hook_16,
+                                               artcnn_hook_c4f16, artcnn_hook_c4f32);
         }
     }
     const struct pl_hook *active_hooks[] = {fsrcnnx_hook};
@@ -7567,6 +7591,12 @@ void QmlMainWindow::render()
                 case PlaceboUpscaler::FSRCNNX16:
                 qCDebug(chiakiGui) << "Activating custom upscaler: FSRCNNX x2 16-0-4-1";
                 break;
+                case PlaceboUpscaler::ArtCNNC4F16:
+                    qCDebug(chiakiGui) << "Activating custom upscaler: ArtCNN C4F16";
+                    break;
+                case PlaceboUpscaler::ArtCNNC4F32:
+                    qCDebug(chiakiGui) << "Activating custom upscaler: ArtCNN C4F32";
+                    break;
                 default:
                     break;
                 }

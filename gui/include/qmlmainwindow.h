@@ -465,6 +465,11 @@ private:
     const struct pl_hook *fsr_hook = nullptr;
     const struct pl_hook *fsrcnnx_hook_8 = nullptr;
     const struct pl_hook *fsrcnnx_hook_16 = nullptr;
+    // Loaded on first use: the ArtCNN shaders are large and optional.
+    const struct pl_hook *artcnn_hook_c4f16 = nullptr;
+    const struct pl_hook *artcnn_hook_c4f32 = nullptr;
+    bool artcnn_c4f16_load_attempted = false;
+    bool artcnn_c4f32_load_attempted = false;
 
     struct {
         PFN_vkGetDeviceProcAddr vkGetDeviceProcAddr;
